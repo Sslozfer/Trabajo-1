@@ -9,11 +9,6 @@ from datetime import datetime, timedelta
 from plotly.subplots import make_subplots
 
 
-headers = {
-    'Accept': 'application/vnd.github.v3+json', 
-    'Authorization': 'Bearer' 
-}
-REQUEST_TIMEOUT = 15
 
 # Verificar límite de peticiones
 def check_rate_limit():
