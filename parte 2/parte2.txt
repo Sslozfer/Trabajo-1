@@ -11,7 +11,7 @@ from plotly.subplots import make_subplots
 
 headers = {
     'Accept': 'application/vnd.github.v3+json', 
-    'Authorization': 'Bearer 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' 
+    'Authorization': 'Bearer' 
 }
 REQUEST_TIMEOUT = 15
 
