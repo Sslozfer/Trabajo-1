@@ -8,14 +8,27 @@ import pandas as pd
 from datetime import datetime, timedelta
 from plotly.subplots import make_subplots
 
-# Configuración de la API
+
 headers = {
     'Accept': 'application/vnd.github.v3+json', 
-    'Authorization': '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' # Necesario para más requests
+    'Authorization': 'Bearer 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' 
 }
 REQUEST_TIMEOUT = 15
 
-# --- 1. RED DE COLABORADORES (GRAFO) ---
+# Verificar límite de peticiones
+def check_rate_limit():
+    url = 'https://api.github.com/rate_limit'
+    response = requests.get(url, headers=headers)
+    if response.ok:
+        data = response.json()
+        remaining = data['rate']['remaining']
+        reset_time = datetime.fromtimestamp(data['rate']['reset'])
+        print(f"🔋 Peticiones restantes: {remaining}")
+        print(f"⏰ Reseteo de límite: {reset_time}")
+    else:
+        print(f"❌ No se pudo consultar el límite. Código: {response.status_code}")
+
+# 1. RED DE COLABORADORES (GRAFO) 
 def get_collaborators(owner, repo, max_users=10):
     url = f'https://api.github.com/repos/{owner}/{repo}/contributors?per_page={max_users}'
     try:
@@ -103,9 +116,8 @@ except Exception as e:
     print(f"Error al visualizar el grafo: {str(e)}")
     fig_graph = go.Figure()
 
-# --- 2. MAPA DE CALOR CON COMMITS REALES POR HORA ---
+# 2. MAPA DE CALOR CON COMMITS REALES POR HORA 
 def get_real_commits_by_hour(owner, repo, days_back=30):
-    """Obtiene commits reales agrupados por hora y día"""
     url = f'https://api.github.com/repos/{owner}/{repo}/commits'
     since_date = (datetime.now() - timedelta(days=days_back)).isoformat()
     params = {'since': since_date, 'per_page': 100}
@@ -137,12 +149,11 @@ def get_real_commits_by_hour(owner, repo, days_back=30):
                         'Fecha': commit_date.date()
                     })
             
-            # Verificar si hay más páginas
             if 'next' not in response.links:
                 break
                 
             page += 1
-            time.sleep(0.5)  # Evitar rate limiting
+            time.sleep(0.5)
             
         except Exception as e:
             print(f"Error al obtener commits: {str(e)}")
@@ -159,15 +170,12 @@ def create_real_heatmap(owner, repo):
         print("No se pudieron obtener commits. Usando datos de ejemplo...")
         return create_sample_heatmap(owner, repo)
     
-    # Procesamiento de datos
     df = pd.DataFrame(commits_data)
     df_counts = df.groupby(['Día', 'Hora']).size().reset_index(name='Commits')
     
-    # Ordenar días lógicamente
     days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     df_counts['Día'] = pd.Categorical(df_counts['Día'], categories=days_order, ordered=True)
     
-    # Crear heatmap
     fig = px.density_heatmap(
         df_counts,
         x='Hora',
@@ -180,7 +188,6 @@ def create_real_heatmap(owner, repo):
         labels={'Commits': 'Commits/hora'}
     )
     
-    # Personalización
     fig.update_layout(
         xaxis=dict(
             tickvals=list(range(24)),
@@ -191,7 +198,7 @@ def create_real_heatmap(owner, repo):
         coloraxis=dict(
             colorbar=dict(title='Commits/hora'),
             cmin=0,
-            cmax=df_counts['Commits'].quantile(0.9)  # Escala al percentil 90
+            cmax=df_counts['Commits'].quantile(0.9)  
         ),
         height=600,
         hovermode='x unified'
@@ -200,7 +207,6 @@ def create_real_heatmap(owner, repo):
     return fig
 
 def create_sample_heatmap(owner, repo):
-    """Genera datos de ejemplo cuando la API falla"""
     print("Generando datos de ejemplo realistas...")
     activity = []
     for day in range(7):
@@ -246,7 +252,8 @@ def create_sample_heatmap(owner, repo):
 
 fig_heatmap = create_real_heatmap('facebook', 'react')
 
-# --- 3. TREEMAP DE LICENCIAS Y LENGUAJES ---
+
+# 3. TREEMAP DE LICENCIAS Y LENGUAJES 
 def get_top_repos_with_licenses(num_repos=50):
     url = f'https://api.github.com/search/repositories?q=stars:>1000&sort=stars&order=desc&per_page={num_repos}'
     try:
@@ -276,18 +283,27 @@ def get_top_repos_with_licenses(num_repos=50):
 df_licenses = get_top_repos_with_licenses()
 
 try:
-    fig_treemap = px.treemap(
-        df_licenses,
-        path=['license', 'language', 'name'],
-        values='stars',
-        title='Distribución de Licencias y Lenguajes en Repositorios Populares',
-        color_continuous_scale='RdBu'
-    ) if not df_licenses.empty else go.Figure()
+    if not df_licenses.empty:
+        df_licenses.replace({'None': None}, inplace=True)
+        df_licenses.dropna(subset=['license', 'language', 'name'], inplace=True)
+        fig_treemap = px.treemap(
+            df_licenses,
+            path=['license', 'language', 'name'],
+            values='stars',
+            title='Distribución de Licencias y Lenguajes en Repositorios Populares',
+            color_continuous_scale='RdBu'
+        )
+    else:
+        fig_treemap = go.Figure()
 except Exception as e:
     print(f"Error al crear treemap: {str(e)}")
     fig_treemap = go.Figure()
 
-# --- DASHBOARD FINAL ---
+
+check_rate_limit()
+df_licenses = get_top_repos_with_licenses()
+
+# FINAL 
 try:
     fig = make_subplots(
         rows=2, cols=2,
@@ -297,7 +313,7 @@ try:
         ],
         subplot_titles=(
             "Red de Colaboradores",
-            "Actividad de Commits",
+            "Actividad de Commits en Facebook",
             "Licencias y Lenguajes"
         ),
         vertical_spacing=0.1,
