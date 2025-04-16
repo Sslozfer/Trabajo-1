@@ -10,8 +10,8 @@ from plotly.subplots import make_subplots
 
 # Configuración de la API
 headers = {
-    'Accept': 'application/vnd.github.v3+json'
-      # Necesario para más requests
+    'Accept': 'application/vnd.github.v3+json', 
+    'Authorization': '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' # Necesario para más requests
 }
 REQUEST_TIMEOUT = 15
 
