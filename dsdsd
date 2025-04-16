@@ -1,0 +1,5 @@
+headers = {
+    'Accept': 'application/vnd.github.v3+json', 
+    'Authorization': 'Bearer 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' 
+}
+REQUEST_TIMEOUT = 15
