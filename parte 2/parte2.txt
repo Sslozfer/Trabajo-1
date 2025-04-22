@@ -1,44 +1,40 @@
-# Importar bibliotecas necesarias
-import requests  # Para hacer peticiones HTTP
-import time  # Para manejar tiempos de espera
-import random  # Para generar datos aleatorios
-import plotly.graph_objects as go  # Para graficos avanzados
-import plotly.express as px  # Para graficos rapidos
-import networkx as nx  # Para trabajar con grafos
-import pandas as pd  # Para manejo de datos
-from datetime import datetime, timedelta  # Para manejar fechas
-from plotly.subplots import make_subplots  # Para crear subgraficos
+import requests
+import time
+import random 
+import plotly.graph_objects as go
+import plotly.express as px
+import networkx as nx
+import pandas as pd
+from datetime import datetime, timedelta
+from plotly.subplots import make_subplots
 
-#tengo que pegar aca lo del token, no lo pongo porque github me dice que es riesgoso y blablabla
-
-# Funcion para verificar limite de peticiones a la API
-def verificar_limite_peticiones():
+# Verificar límite de peticiones
+def check_rate_limit():
     url = 'https://api.github.com/rate_limit'
-    respuesta = requests.get(url, headers=headers)
-    if respuesta.ok:
-        datos = respuesta.json()
-        restantes = datos['rate']['remaining']
-        tiempo_reset = datetime.fromtimestamp(datos['rate']['reset'])
-        print(f"🔋 Peticiones restantes: {restantes}")
-        print(f"⏰ Reseteo de limite: {tiempo_reset}")
+    response = requests.get(url, headers=headers)
+    if response.ok:
+        data = response.json()
+        remaining = data['rate']['remaining']
+        reset_time = datetime.fromtimestamp(data['rate']['reset'])
+        print(f"🔋 Peticiones restantes: {remaining}")
+        print(f"⏰ Reseteo de límite: {reset_time}")
     else:
-        print(f"❌ Error al consultar limite. Código: {respuesta.status_code}")
+        print(f"❌ No se pudo consultar el límite. Código: {response.status_code}")
 
-# 1. FUNCION PARA OBTENER COLABORADORES DE UN REPOSITORIO
-def obtener_colaboradores(propietario, repositorio, max_usuarios=10):
-    url = f'https://api.github.com/repos/{propietario}/{repositorio}/contributors?per_page={max_usuarios}'
+# 1. RED DE COLABORADORES (GRAFO) 
+def get_collaborators(owner, repo, max_users=10):
+    url = f'https://api.github.com/repos/{owner}/{repo}/contributors?per_page={max_users}'
     try:
-        respuesta = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
-        if respuesta.ok:
-            return [usuario['login'] for usuario in respuesta.json()]
-        print(f"Error al obtener colaboradores: {respuesta.status_code}")
+        response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+        if response.ok:
+            return [user['login'] for user in response.json()]
+        print(f"Error al obtener colaboradores: {response.status_code}")
         return []
     except Exception as e:
-        print(f"Error de conexion para {propietario}/{repositorio}: {str(e)}")
+        print(f"Error de conexión para {owner}/{repo}: {str(e)}")
         return []
 
-# Repositorios a analizar
-repositorios_analizar = [
+repos_to_analyze = [
     ('facebook', 'react'),
     ('vuejs', 'vue'),
     ('angular', 'angular'),
@@ -46,68 +42,54 @@ repositorios_analizar = [
     ('vercel', 'next.js')
 ]
 
-# Crear grafo de colaboradores
-grafo = nx.Graph()
-for propietario, repositorio in repositorios_analizar:
-    nombre_repo = f"{propietario}/{repositorio}"
+G = nx.Graph()
+for owner, repo in repos_to_analyze:
+    repo_name = f"{owner}/{repo}"
     try:
-        # Añadir nodo para el repositorio
-        grafo.add_node(nombre_repo, tipo='repositorio', tamaño=30)
-        
-        # Obtener colaboradores
-        colaboradores = obtener_colaboradores(propietario, repositorio)
-        
-        # Añadir nodos y conexiones para cada colaborador
-        for usuario in colaboradores:
-            if usuario:
-                grafo.add_node(usuario, tipo='usuario', tamaño=10)
-                grafo.add_edge(nombre_repo, usuario, peso=2)
+        G.add_node(repo_name, type='repo', size=30)
+        collaborators = get_collaborators(owner, repo)
+        for user in collaborators:
+            if user:
+                G.add_node(user, type='user', size=10)
+                G.add_edge(repo_name, user, weight=2)
     except Exception as e:
-        print(f"Error procesando {nombre_repo}: {str(e)}")
+        print(f"Error procesando {repo_name}: {str(e)}")
         continue
 
-# Visualizar el grafo de colaboradores
 try:
-    # Calcular posiciones de los nodos
-    posiciones = nx.spring_layout(grafo, k=0.5, iterations=50)
-    
-    # Preparar datos para las conexiones
-    lineas_x = []
-    lineas_y = []
-    for conexion in grafo.edges():
-        x0, y0 = posiciones[conexion[0]]
-        x1, y1 = posiciones[conexion[1]]
-        lineas_x.extend([x0, x1, None])
-        lineas_y.extend([y0, y1, None])
+    pos = nx.spring_layout(G, k=0.5, iterations=50)
+    edge_x = []
+    edge_y = []
+    for edge in G.edges():
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
+        edge_x.extend([x0, x1, None])
+        edge_y.extend([y0, y1, None])
 
-    # Preparar datos para los nodos
-    nodos_x = [posiciones[nodo][0] for nodo in grafo.nodes()]
-    nodos_y = [posiciones[nodo][1] for nodo in grafo.nodes()]
-    tipos_nodos = [grafo.nodes[nodo].get('tipo', 'desconocido') for nodo in grafo.nodes()]
-    texto_nodos = [f"{nodo}<br>Tipo: {grafo.nodes[nodo].get('tipo', '?')}" for nodo in grafo.nodes()]
+    node_x = [pos[node][0] for node in G.nodes()]
+    node_y = [pos[node][1] for node in G.nodes()]
+    node_types = [G.nodes[node].get('type', 'unknown') for node in G.nodes()]
+    node_text = [f"{node}<br>Type: {G.nodes[node].get('type', '?')}" for node in G.nodes()]
 
-    # Crear figura del grafo
-    figura_grafo = go.Figure(
+    fig_graph = go.Figure(
         data=[
-            # Líneas de conexión
             go.Scatter(
-                x=lineas_x, y=lineas_y,
+                x=edge_x, y=edge_y,
                 line=dict(width=0.5, color='#888'),
                 hoverinfo='none',
                 mode='lines'
             ),
-            # Nodos
             go.Scatter(
-                x=nodos_x, y=nodos_y,
+                x=node_x, y=node_y,
                 mode='markers+text',
                 hoverinfo='text',
-                hovertext=texto_nodos,
+                hovertext=node_text,
                 marker=dict(
-                    size=[grafo.nodes[nodo].get('tamaño', 15) for nodo in grafo.nodes()],
-                    color=['blue' if tipo == 'repositorio' else 'orange' for tipo in tipos_nodos],
+                    size=[G.nodes[node].get('size', 15) for node in G.nodes()],
+                    color=['blue' if typ == 'repo' else 'orange' for typ in node_types],
                     opacity=0.9
                 ),
-                text=[nodo.split('/')[-1] if '/' in nodo else nodo[:15] for nodo in grafo.nodes()],
+                text=[node.split('/')[-1] if '/' in node else node[:15] for node in G.nodes()],
                 textposition="top center",
                 textfont=dict(size=10)
             )
@@ -125,82 +107,81 @@ try:
     )
 except Exception as e:
     print(f"Error al visualizar el grafo: {str(e)}")
-    figura_grafo = go.Figure()
+    fig_graph = go.Figure()
 
-# 2. FUNCION PARA OBTENER COMMITS REALES POR HORA
-def obtener_commits_por_hora(propietario, repositorio, dias_retroceso=30):
-    url = f'https://api.github.com/repos/{propietario}/{repositorio}/commits'
-    fecha_inicio = (datetime.now() - timedelta(days=dias_retroceso)).isoformat()
-    parametros = {'since': fecha_inicio, 'per_page': 100}
+# 2. MAPA DE CALOR CON COMMITS REALES POR HORA 
+def get_real_commits_by_hour(owner, repo, days_back=30):
+    url = f'https://api.github.com/repos/{owner}/{repo}/commits'
+    since_date = (datetime.now() - timedelta(days=days_back)).isoformat()
+    params = {'since': since_date, 'per_page': 100}
     
-    datos_commits = []
-    pagina = 1
+    commits_data = []
+    page = 1
     
     while True:
         try:
-            parametros['page'] = pagina
-            respuesta = requests.get(url, headers=headers, params=parametros, timeout=REQUEST_TIMEOUT)
-            respuesta.raise_for_status()
+            params['page'] = page
+            response = requests.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
             
-            commits = respuesta.json()
+            commits = response.json()
             if not commits:
                 break
                 
             for commit in commits:
                 if isinstance(commit, dict) and 'commit' in commit:
-                    fecha_commit = datetime.strptime(
+                    commit_date = datetime.strptime(
                         commit['commit']['committer']['date'],
                         '%Y-%m-%dT%H:%M:%SZ'
                     )
-                    hora = fecha_commit.hour
-                    dia_semana = fecha_commit.strftime('%A')
-                    datos_commits.append({
-                        'Día': dia_semana,
-                        'Hora': hora,
-                        'Fecha': fecha_commit.date()
+                    hour = commit_date.hour
+                    weekday = commit_date.strftime('%A')
+                    commits_data.append({
+                        'Día': weekday,
+                        'Hora': hour,
+                        'Fecha': commit_date.date()
                     })
             
-            if 'next' not in respuesta.links:
+            if 'next' not in response.links:
                 break
                 
-            pagina += 1
+            page += 1
             time.sleep(0.5)
             
         except Exception as e:
             print(f"Error al obtener commits: {str(e)}")
             break
     
-    return datos_commits
+    return commits_data
 
-# Funcion para crear mapa de calor con commits reales
-def crear_mapa_calor_real(propietario, repositorio):
-    print(f"\n📊 Obteniendo commits REALES de {propietario}/{repositorio}...")
+def create_real_heatmap(owner, repo):
+    print(f"\n📊 Obteniendo commits REALES de {owner}/{repo}...")
     
-    datos_commits = obtener_commits_por_hora(propietario, repositorio)
+    commits_data = get_real_commits_by_hour(owner, repo)
     
-    if not datos_commits:
+    if not commits_data:
         print("No se pudieron obtener commits. Usando datos de ejemplo...")
-        return crear_mapa_calor_ejemplo(propietario, repositorio)
+        return create_sample_heatmap(owner, repo)
     
-    df = pd.DataFrame(datos_commits)
-    conteo_commits = df.groupby(['Día', 'Hora']).size().reset_index(name='Commits')
+    df = pd.DataFrame(commits_data)
+    df_counts = df.groupby(['Día', 'Hora']).size().reset_index(name='Commits')
     
-    orden_dias = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado', 'Domingo']
-    conteo_commits['Día'] = pd.Categorical(conteo_commits['Día'], categories=orden_dias, ordered=True)
+    days_order = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado', 'Domingo']
+    df_counts['Día'] = pd.Categorical(df_counts['Día'], categories=days_order, ordered=True)
     
-    figura = px.density_heatmap(
-        conteo_commits,
+    fig = px.density_heatmap(
+        df_counts,
         x='Hora',
         y='Día',
         z='Commits',
         nbinsx=24,
         nbinsy=7,
         color_continuous_scale='thermal',
-        title=f'Actividad REAL de Commits en {propietario}/{repositorio}',
+        title=f'Actividad REAL de Commits en {owner}/{repo}',
         labels={'Commits': 'Commits/hora'}
     )
     
-    figura.update_layout(
+    fig.update_layout(
         xaxis=dict(
             tickvals=list(range(24)),
             ticktext=[f"{h:02d}:00" for h in range(24)],
@@ -210,116 +191,114 @@ def crear_mapa_calor_real(propietario, repositorio):
         coloraxis=dict(
             colorbar=dict(title='Commits/hora'),
             cmin=0,
-            cmax=conteo_commits['Commits'].quantile(0.9)  
+            cmax=df_counts['Commits'].quantile(0.9)  
         ),
         height=600,
         hovermode='x unified'
     )
     
-    return figura
+    return fig
 
-# Funcion para crear mapa de calor con datos de ejemplo
-def crear_mapa_calor_ejemplo(propietario, repositorio):
+def create_sample_heatmap(owner, repo):
     print("Generando datos de ejemplo realistas...")
-    actividad = []
-    for dia in range(7):
-        for hora in range(24):
-            base = 5 if dia >= 5 else 10
-            if dia < 5:  # Dias laborables
-                if 9 <= hora <= 17:  # Horario laboral
-                    commits = base + 30 * (1 - abs(13 - hora)/4)
-                elif 19 <= hora <= 23:  # Tarde-noche
+    activity = []
+    for day in range(7):
+        for hour in range(24):
+            base = 5 if day >= 5 else 10
+            if day < 5:
+                if 9 <= hour <= 17:
+                    commits = base + 30 * (1 - abs(13 - hour)/4)
+                elif 19 <= hour <= 23:
                     commits = base + 15
-                else:  # Madrugada
+                else:
                     commits = base
-            else:  # Fin de semana
-                if 10 <= hora <= 16:  # Horario diurno
-                    commits = base + 20 * (1 - abs(13 - hora)/3)
-                else:  # Noche/madrugada
+            else:
+                if 10 <= hour <= 16:
+                    commits = base + 20 * (1 - abs(13 - hour)/3)
+                else:
                     commits = base
-            commits += random.randint(0, 10)  # Variabilidad aleatoria
-            actividad.append([hora, dia, int(max(commits, 1))])
+            commits += random.randint(0, 10)
+            activity.append([hour, day, int(max(commits, 1))])
     
-    df = pd.DataFrame(actividad, columns=['Hora', 'Día_num', 'Commits'])
-    dias = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado', 'Domingo']
-    df['Día'] = df['Día_num'].map(lambda x: dias[x])
+    df = pd.DataFrame(activity, columns=['Hora', 'Día_num', 'Commits'])
+    days = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado', 'Domingo']
+    df['Día'] = df['Día_num'].map(lambda x: days[x])
     
-    figura = px.density_heatmap(
+    fig = px.density_heatmap(
         df,
         x='Hora',
         y='Día',
         z='Commits',
         color_continuous_scale='thermal',
-        title=f'Actividad de Commits en {propietario}/{repositorio} (Datos de ejemplo)'
+        title=f'Actividad de Commits en {owner}/{repo} (Datos de ejemplo)'
     )
     
-    figura.add_annotation(
-        text="⚠️ DATOS DE EJEMPLO - API NO RESPONDIO pipipi :( ⚠️",
+    fig.add_annotation(
+        text="⚠️ DATOS DE EJEMPLO - API NO RESPONDIÓ ⚠️",
         xref="paper", yref="paper",
         x=0.5, y=1.08,
         showarrow=False,
         font=dict(size=12, color="red")
     )
     
-    return figura
+    return fig
 
-# Crear mapa de calor para React
-figura_mapa_calor = crear_mapa_calor_real('facebook', 'react')
+fig_heatmap = create_real_heatmap('facebook', 'react')
 
-# 3. FUNCION PARA OBTENER REPOSITORIOS POPULARES CON LICENCIAS
-def obtener_repositorios_populares(num_repos=50):
+
+# 3. TREEMAP DE LICENCIAS Y LENGUAJES 
+def get_top_repos_with_licenses(num_repos=50):
     url = f'https://api.github.com/search/repositories?q=stars:>1000&sort=stars&order=desc&per_page={num_repos}'
     try:
-        respuesta = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
-        if respuesta.ok:
-            repositorios = respuesta.json().get('items', [])
-            datos = []
-            for repo in repositorios:
+        response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+        if response.ok:
+            repos = response.json().get('items', [])
+            data = []
+            for repo in repos:
                 try:
-                    info_licencia = repo.get('license', {})
-                    datos.append({
-                        'nombre': repo.get('name', 'Desconocido'),
-                        'lenguaje': repo.get('language', 'None'),
-                        'licencia': info_licencia.get('spdx_id', 'None') if info_licencia else 'None',
-                        'estrellas': repo.get('stargazers_count', 0)
+                    license_info = repo.get('license', {})
+                    data.append({
+                        'name': repo.get('name', 'Desconocido'),
+                        'language': repo.get('language', 'None'),
+                        'license': license_info.get('spdx_id', 'None') if license_info else 'None',
+                        'stars': repo.get('stargazers_count', 0)
                     })
                 except Exception as e:
                     print(f"Error procesando repositorio: {str(e)}")
                     continue
-            return pd.DataFrame(datos)
-        print(f"Error al obtener repositorios: {respuesta.status_code}")
+            return pd.DataFrame(data)
+        print(f"Error al obtener repositorios: {response.status_code}")
         return pd.DataFrame()
     except Exception as e:
         print(f"Error de conexión: {str(e)}")
         return pd.DataFrame()
 
-# Obtener datos de repositorios
-df_licencias = obtener_repositorios_populares()
+df_licenses = get_top_repos_with_licenses()
 
-# Crear treemap de licencias y lenguajes
 try:
-    if not df_licencias.empty:
-        df_licencias.replace({'None': None}, inplace=True)
-        df_licencias.dropna(subset=['licencia', 'lenguaje', 'nombre'], inplace=True)
-        figura_treemap = px.treemap(
-            df_licencias,
-            path=['licencia', 'lenguaje', 'nombre'],
-            values='estrellas',
+    if not df_licenses.empty:
+        df_licenses.replace({'None': None}, inplace=True)
+        df_licenses.dropna(subset=['license', 'language', 'name'], inplace=True)
+        fig_treemap = px.treemap(
+            df_licenses,
+            path=['license', 'language', 'name'],
+            values='stars',
             title='Distribución de Licencias y Lenguajes en Repositorios Populares',
             color_continuous_scale='RdBu'
         )
     else:
-        figura_treemap = go.Figure()
+        fig_treemap = go.Figure()
 except Exception as e:
     print(f"Error al crear treemap: {str(e)}")
-    figura_treemap = go.Figure()
+    fig_treemap = go.Figure()
 
-# Verificar limite de peticiones
-verificar_limite_peticiones()
 
-# Crear dashboard final con todos los graficos
+check_rate_limit()
+df_licenses = get_top_repos_with_licenses()
+
+# FINAL 
 try:
-    figura_final = make_subplots(
+    fig = make_subplots(
         rows=2, cols=2,
         specs=[
             [{"type": "scatter", "rowspan": 2}, {"type": "heatmap"}],
@@ -327,34 +306,31 @@ try:
         ],
         subplot_titles=(
             "Red de Colaboradores",
-            "Actividad de Commits en Facebook/React",
-            "Licencias y Lenguajes en Repositorios Populares"
+            "Actividad de Commits en Facebook",
+            "Licencias y Lenguajes"
         ),
         vertical_spacing=0.1,
         horizontal_spacing=0.1
     )
 
-    # Añadir graficos al dashboard
-    if figura_grafo.data:
-        figura_final.add_trace(figura_grafo.data[0], row=1, col=1)
-        figura_final.add_trace(figura_grafo.data[1], row=1, col=1)
+    if fig_graph.data:
+        fig.add_trace(fig_graph.data[0], row=1, col=1)
+        fig.add_trace(fig_graph.data[1], row=1, col=1)
     
-    if figura_mapa_calor.data:
-        figura_final.add_trace(figura_mapa_calor.data[0], row=1, col=2)
+    if fig_heatmap.data:
+        fig.add_trace(fig_heatmap.data[0], row=1, col=2)
     
-    if figura_treemap.data:
-        figura_final.add_trace(figura_treemap.data[0], row=2, col=2)
+    if fig_treemap.data:
+        fig.add_trace(fig_treemap.data[0], row=2, col=2)
 
-    # Configurar diseño del dashboard
-    figura_final.update_layout(
+    fig.update_layout(
         height=900,
         showlegend=False,
         title_text="Análisis de Repositorios GitHub",
         margin=dict(t=100, b=20, l=20, r=20)
     )
 
-    # Mostrar el dashboard
-    figura_final.show()
+    fig.show()
 
 except Exception as e:
     print(f"Error al crear dashboard: {str(e)}")
