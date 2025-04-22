@@ -1,58 +1,73 @@
-import requests
-import plotly.express as px
-from datetime import datetime, timedelta
+# Importar bibliotecas necesarias
+import requests  # Para hacer peticiones web
+import plotly.express as px  # Para crear graficos interactivos
+from datetime import datetime, timedelta  # Para manejar fechas y tiempos
 
-end_time = datetime.utcnow()
-start_time = end_time - timedelta(days=1)
+# Configurar el rango de tiempo (ultimas 24 horas)
+tiempo_final = datetime.utcnow()  # Obtener hora actual en UTC
+tiempo_inicial = tiempo_final - timedelta(days=1)  # Restar 1 día
 
-url = f"https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime={start_time.strftime('%Y-%m-%d')}&endtime={end_time.strftime('%Y-%m-%d')}&minmagnitude=2.5"
+# Construir URL para la API de terremotos
+url = f"https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime={tiempo_inicial.strftime('%Y-%m-%d')}&endtime={tiempo_final.strftime('%Y-%m-%d')}&minmagnitude=2.5"
 
-response = requests.get(url)
-data = response.json()
+# Obtener datos de terremotos
+respuesta = requests.get(url)  # Hacer peticion a la API
+datos = respuesta.json()  # Convertir respuesta a formato Python
 
-terremotos = []
-for feature in data['features']:
-    props = feature['properties']
-    geom = feature['geometry']
-    terremotos.append({
-        'magnitud': props['mag'],
-        'lugar': props['place'],
-        'tiempo': datetime.utcfromtimestamp(props['time']/1000),
-        'longitud': geom['coordinates'][0],
-        'latitud': geom['coordinates'][1],
-        'profundidad': geom['coordinates'][2]
+# Procesar datos de terremotos
+lista_terremotos = []  # Lista para almacenar terremotos
+
+for terremoto in datos['features']:
+    propiedades = terremoto['properties']  # Propiedades del terremoto
+    geometria = terremoto['geometry']  # Ubicacion geografica
+    
+    # Añadir cada terremoto a la lista
+    lista_terremotos.append({
+        'magnitud': propiedades['mag'],
+        'lugar': propiedades['place'],
+        'tiempo': datetime.utcfromtimestamp(propiedades['time']/1000),  # Convertir tiempo
+        'longitud': geometria['coordinates'][0],
+        'latitud': geometria['coordinates'][1],
+        'profundidad': geometria['coordinates'][2]
     })
 
-# Crear un diccionario con los datos para el gráfico
-data_dict = {
-    'latitud': [t['latitud'] for t in terremotos],
-    'longitud': [t['longitud'] for t in terremotos],
-    'magnitud': [t['magnitud'] for t in terremotos],
-    'profundidad': [t['profundidad'] for t in terremotos],
-    'lugar': [t['lugar'] for t in terremotos],
-    'tiempo': [t['tiempo'] for t in terremotos]
+# Preparar datos para el grafico (sin pandas por que nachito no quiere :( )
+datos_grafico = {
+    'latitud': [t['latitud'] for t in lista_terremotos],
+    'longitud': [t['longitud'] for t in lista_terremotos],
+    'magnitud': [t['magnitud'] for t in lista_terremotos],
+    'profundidad': [t['profundidad'] for t in lista_terremotos],
+    'lugar': [t['lugar'] for t in lista_terremotos],
+    'tiempo': [t['tiempo'] for t in lista_terremotos]
 }
 
-fig = px.scatter_geo(data_dict, 
-                     lat='latitud', 
-                     lon='longitud',
-                     size='magnitud',
-                     color='profundidad',
-                     hover_name='lugar',
+# Crear el mapa interactivo
+mapa = px.scatter_geo(datos_grafico, 
+                     lat='latitud',  # Columna para latitud
+                     lon='longitud',  # Columna para longitud
+                     size='magnitud',  # Tamaño segun magnitud
+                     color='profundidad',  # Color segun profundidad
+                     hover_name='lugar',  # Texto al pasar el mouse
                      hover_data={
-                         'tiempo': True,
-                         'magnitud': True,
-                         'profundidad': True,
-                         'latitud': True,
-                         'longitud': True
+                         'tiempo': True,  # Mostrar tiempo
+                         'magnitud': True,  # Mostrar magnitud
+                         'profundidad': True,  # Mostrar profundidad
+                         'latitud': True,  # Mostrar latitud
+                         'longitud': True  # Mostrar longitud
                      },
-                     projection='natural earth',
-                     title=f'Terremotos globales en las últimas 24 horas (desde {start_time} UTC)',
-                     color_continuous_scale='viridis_r')
+                     projection='natural earth',  # Tipo de proyeccion
+                     title=f'Terremotos globales en las últimas 24 horas (desde {tiempo_inicial} UTC)',
+                     color_continuous_scale='viridis_r')  # Escala de colores
 
-fig.update_geos(showcoastlines=True, coastlinecolor="Black",
-                showland=True, landcolor="lightgray",
-                showocean=True, oceancolor="lightblue")
+# Personalizar apariencia del mapa
+mapa.update_geos(
+    showcoastlines=True, coastlinecolor="Black",  # Mostrar lineas costeras
+    showland=True, landcolor="lightgray",  # Color de tierra
+    showocean=True, oceancolor="lightblue"  # Color de océano
+)
 
-fig.update_layout(margin=dict(l=0, r=0, t=30, b=0))
-fig.show()
+# Ajustar margenes del grafico
+mapa.update_layout(margin=dict(l=0, r=0, t=30, b=0))
+
+# Mostrar el mapa interactivo
+mapa.show()
